@@ -35,6 +35,7 @@
 %format (const f) = "\underline{" f "}"
 %format TLTree = "\mathsf{TLTree}"
 %format (lcbr (x)(y)) = "\begin{lcbr}" x "\\" y "\end{lcbr}"
+%format (lcbr4 (x)(y)(z)(w)) = "\begin{lcbr}" x "\\" y "\\" z "\\" w "\end{lcbr}"
 %format (split (x) (y)) = "\conj{" x "}{" y "}"
 %format for f i = "\mathsf{for}\ " f "\ " i
 %format B_tree = "\mathsf{B}\mbox{-}\mathsf{tree} "
@@ -107,7 +108,7 @@
 \begin{tabular}{ll}
 \textbf{Grupo} nr. & 21
 \\\hline
-a11111 & Nome1 (preencher)
+a82405 & José Gonçalo Costa
 \\
 a80908 & João Ribeiro Imperadeiro
 \\
@@ -808,7 +809,7 @@ Green  30.0%
 White  10.0%
 \end{verbatim}
 \end{quote}
-cf.\ Figura \ref{fig:dist}.
+cf.\ Figura~\ref{fig:dist}.
 
 \begin{figure}
 \begin{center}
@@ -974,70 +975,307 @@ outras funções auxiliares que sejam necessárias.
 \subsection*{Problema 1}
 
 \begin{code}
-inBlockchain = undefined
-outBlockchain = undefined
-recBlockchain = undefined    
-cataBlockchain = undefined     
-anaBlockchain = undefined
-hyloBlockchain = undefined
+inBlockchain = either Bc Bcs
+outBlockchain (Bc bc) = i1 bc
+outBlockchain (Bcs bcs) = i2 bcs
+recBlockchain f = id -|- id >< f
+cataBlockchain g = g . recBlockchain (cataBlockchain g) . outBlockchain
+anaBlockchain g = inBlockchain . recBlockchain (anaBlockchain g) . g
+hyloBlockchain h g = cataBlockchain h . anaBlockchain g
 
-allTransactions = undefined
-ledger = undefined
-isValidMagicNr = undefined
+allTransactions = cataBlockchain (either (p2 . p2) (conc . ((p2 . p2) >< id)))
+
+ledger = cataList (either nil updateLedger) . allTransactions
+            where updateLedger :: (Transaction, Ledger) -> Ledger
+                  updateLedger ((e1, (v, e2)), l) = updateLedgerAux e1 (-v) (updateLedgerAux e2 v l)
+                  updateLedgerAux :: Entity -> Value -> Ledger -> Ledger
+                  updateLedgerAux e v [] = [(e, v)]
+                  updateLedgerAux e v ((x, y):t) | e == x = (e, v+y) : t
+                                                 | otherwise = (x, y) : updateLedgerAux e v t 
+
+isValidMagicNr = p1 . (cataBlockchain (either (split true (singl . p1)) insertOrFalse))
+            where insertOrFalse :: (Block, (Bool, [MagicNo])) -> (Bool, [MagicNo])
+                  insertOrFalse ((mn, r), (b, lmn)) | b == False = (False, [])
+                                                    | otherwise = if (elem mn lmn) then (False, []) else (True, mn : lmn)
 \end{code}
 
 \subsection*{Problema 2}
 
 \begin{code}
-inQTree = undefined
-outQTree = undefined
-baseQTree = undefined
-recQTree = undefined
-cataQTree = undefined
-anaQTree = undefined
-hyloQTree = undefined
+inQTree (Left (x, (y, z))) = Cell x y z
+inQTree (Right (a, (b, (c, d)))) = Block a b c d
+outQTree (Cell x y z) = i1 (x, (y, z))
+outQTree (Block a b c d) = i2 (a, (b, (c, d)))
+baseQTree f g = (f >< id) -|- (g >< (g >< (g >< g)))
+recQTree f = baseQTree id f
+cataQTree g = g . recQTree (cataQTree g) . outQTree
+anaQTree g = inQTree . recQTree (anaQTree g) . g
+hyloQTree h g = cataQTree h . anaQTree g
 
 instance Functor QTree where
-    fmap = undefined
+    fmap f = cataQTree (inQTree . baseQTree f id)
 
-rotateQTree = undefined
-scaleQTree = undefined
-invertQTree = undefined
-compressQTree = undefined
-outlineQTree = undefined
+rotateQTree = cataQTree (inQTree . ((id >< swap) -|- swapQTrees))
+            where swapQTrees (a, (b, (c, d))) = (c, (a, (d, b)))
+
+scaleQTree x = cataQTree (inQTree . (scaleCell x -|- id))
+            where scaleCell x (a, (b, c)) = (a, (x*b, x*c))
+
+invertQTree = fmap invertColor
+            where invertColor (PixelRGBA8 r g b a) = PixelRGBA8 (255-r) (255-g) (255-b) a
+
+compressQTree 0 = id
+compressQTree n = compressQTree (n-1) . anaQTree comprime
+            where comprime :: QTree a -> Either (a, (Int, Int)) ((QTree a, (QTree a, (QTree a, QTree a))))
+                  comprime (Cell x y z) = i1 (x, (y, z))
+                  comprime (Block (Cell x1 y1 z1)
+                                  (Cell x2 y2 z2)
+                                  (Cell x3 y3 z3)
+                                  (Cell x4 y4 z4)) = i1 (x1, ((y1+y2), (z1+z3)))
+                  comprime (Block a b c d) = i2 (a, (b, (c, d)))
+
+outlineQTree f = qt2bm . cataQTree (either (processa f) (inQTree . i2))
+            where processa :: (a -> Bool) -> (a, (Int, Int)) -> QTree Bool
+                  processa f (a, (x, y)) | f a = Block (Block (Cell True 1 1)
+                                                              (Cell True (x-2) 1)
+                                                              (Cell True 1 (y-2))
+                                                              (Cell False (x-2) (y-2)))
+                                                       (Cell True 1 (y-1)) (Cell True (x-1) 1) (Cell True 1 1)
+                                         | otherwise = Cell False x y
 \end{code}
 
 \subsection*{Problema 3}
 
+\begin{eqnarray*}
+\start
+    |lcbr(
+        f k . in = a . F (split (f k) (l k))
+    )(
+        l k . in = b . F (split (f k) (l k))
+    )|
+%
+\just\equiv{ def. in, def. F, a=[a1,a2], b=[b1,b2] }
+%
+    |lcbr(
+        f k . (either (const 0) succ) = (either a1 a2) . (id + (split (f k) (l k)))
+    )(
+        l k . (either (const 0) succ) = (either b1 b2) . (id + (split (f k) (l k)))
+    )|
+%
+\just\equiv{ Fusão-+, Absorção-+ }
+%
+    |lcbr(
+        either (f k . const 0) (f k . succ) = either (a1 . id) (a2 . (split (f k) (l k)))
+    )(
+        either (l k . const 0) (l k . succ) = either (b1 . id) (b2 . (split (f k) (l k)))
+    )|
+%
+\just\equiv{ Fusão const, Natural-id, Eq-+ }
+%
+    |lcbr4(
+        const (f k 0) = a1
+    )(
+        f k . succ = a2 . (split (f k) (l k))
+    )(
+        const (l k 0) = b1
+    )(
+        l k . succ = b2 . (split (f k) (l k))
+    )|
+%
+\just\equiv{ def. F k, def. l k, 73, 74, 78, def. succ }
+%
+    |lcbr4(
+        a1 = const 1
+    )(
+        f k (n + 1) = a2 (f k n, l k n)
+    )(
+        b1 = const (k + 1)
+    )(
+        l k (n + 1) = b2 (f k n, l k n)
+    )|
+%
+\just\equiv{ def. F k, def. l k }
+%
+    |lcbr4(
+        a1 = const 1
+    )(
+        a2 = mul
+    )(
+        b1 = const (k + 1)
+    )(
+        b2 = succ . p2
+    )|
+%
+\just\equiv{ a=[a1,a2], b=[b1,b2], Fokkinga }
+%
+    |split (f k) (l k) = cataNat (split (either (const 1) mul) (either (const (k+1)) (succ . p2)))|
+\qed
+\end{eqnarray*}
+
+\begin {eqnarray*}
+\start
+    |lcbr(
+        g . in = h . F (split g s)
+    )(
+        s . in = j . F (split g s)
+    )|
+%
+\just\equiv{ def. in, def. F, h=[h1,h2], j=[j1,j2] }
+%
+    |lcbr(
+        g . (either (const 0) succ) = (either h1 h2) . (id + (split g s))
+    )(
+        s . (either (const 0) succ) = (either j1 j2) . (id + (split g s))
+    )|
+%
+\just\equiv{ Fusão-+, Absorção-+ }
+%
+    |lcbr(
+        either (g . const 0) (g . succ) = either (h1 . id) (h2 . (split g s))
+    )(
+        either (s . const 0) (s . succ) = either (j1 . id) (j2 . (split g s))
+    )|
+%
+\just\equiv{ Fusão const, Natural-id, Eq-+ }
+%
+    |lcbr4(
+        const (g 0) = h1
+    )(
+        g . succ = h2 . (split g s)
+    )(
+        const (s 0) = j1
+    )(
+        s . succ = j2 . (split g s)
+    )|
+%
+\just\equiv{ def. g, def. s, 73, 74, 78, def. succ }
+%
+    |lcbr4(
+        h1 = const 1
+    )(
+        g (n + 1) = h2 (g n, s n)
+    )(
+        j1 = const 1
+    )(
+        s (n + 1) = j2 (g n, s n)
+    )|
+%
+\just\equiv{ def. g, def. s }
+%
+    |lcbr4(
+        h1 = const 1
+    )(
+        h2 = mul
+    )(
+        j1 = const 1
+    )(
+        j2 = succ . p2
+    )|
+%
+\just\equiv{ h=[h1,h2], j=[j1,j2], Fokkinga }
+%
+    |split g s = cataNat (split (either (const 1) mul) (either (const 1) (succ . p2)))|
+\qed
+\end{eqnarray*}
+
+\begin {eqnarray*}
+\start
+    |split (split g s) (split (f k) (l k))|
+%
+\just\equiv{ def. (split g s), def. (split (f k) (l k)) }
+%
+    |split (cataNat (split (either (const 1) mul) (either (const 1) (succ . p2)))) (cataNat (split (either (const 1) mul) (either (const (k+1)) (succ . p2))))|
+%
+\just\equiv{ Banana-split }
+%
+    |cataNat (((split (either (const 1) mul) (either (const 1) (succ . p2))) >< (split (either (const 1) mul) (either (const (k+1)) (succ . p2)))) . (split (id+p1) (id+p2)))|
+%
+\just\equiv{ Absorção-x }
+%
+    |cataNat (split (split (either (const 1) mul) (either (const 1) (succ . p2)) . (id + p1)) (split (either (const 1) mul) (either (const (k + 1)) (succ . p2)) . (id+p2)))|
+%
+\just\equiv{ Lei da Troca, Absorção-+ }
+%
+    |cataNat (split (either (split (const 1) (const 1) . id) (split mul (succ . p2) . p1)) (either (split (const 1) (const (k + 1)) . id) (split mul (succ . p2) . p2)))|
+%
+\just\equiv{ Natural-id, Fusão-x }
+%
+    |cataNat (split (either (split (const 1) (const 1)) (split (mul . p1) (succ . p2 . p1))) (either (split (const 1) (const (k + 1))) (split (mul . p2) (succ . p2 . p2))))|
+%
+\just\equiv{ Lei da Troca }
+%
+    |cataNat (either (split (split (const 1) (const 1)) (split (const 1) (const (k + 1)))) (split (split (mul . p1) (succ . p2 . p1)) (split (mul . p2) (succ . p2 . p2))))|
+%
+\just\equiv{ split (const a) (const b) = (const b, const a), for b i = cataNat (either (const i) b) }
+%
+    |for (split (split (mul . p1) (succ . p2 . p1)) (split (mul . p2) (succ . p2 . p2))) ((1, 1), (1, k+1))|
+\qed
+\end{eqnarray*}
+
 \begin{code}
-base = undefined
-loop = undefined
+base k = myUncurry ((1, succ k), (1, 1))
+loop = myUncurry . split (split (mul . p1) (succ . p2 . p1)) (split (mul . p2) (succ . p2 . p2)) . myCurry
+
+myCurry :: (a, b, c, d) -> ((a, b), (c, d))
+myCurry (a, b, c, d) = ((a, b), (c, d))
+
+myUncurry :: ((a, b), (c, d)) -> (a, b, c, d)
+myUncurry ((a, b), (c, d)) = (a, b, c, d)
 \end{code}
 
 \subsection*{Problema 4}
 
 \begin{code}
-inFTree = undefined
-outFTree = undefined
-baseFTree = undefined
-recFTree = undefined
-cataFTree = undefined
-anaFTree = undefined
-hyloFTree = undefined
+inFTree (Left x) = Unit x
+inFTree (Right (x, (y, z))) = Comp x y z
+outFTree (Unit x) = i1 x
+outFTree (Comp x y z) = i2 (x, (y, z))
+baseFTree f g h = g -|- (f >< (h >< h))
+recFTree f = baseFTree id id f
+cataFTree g = g . recFTree (cataFTree g) . outFTree
+anaFTree g = inFTree . recFTree (anaFTree g) . g
+hyloFTree h g = cataFTree h . anaFTree g
 
 instance Bifunctor FTree where
-    bimap = undefined
+    bimap f g = cataFTree (inFTree . (baseFTree f g id))
 
-generatePTree = undefined
-drawPTree = undefined
+generatePTree = anaFTree h . split id (const 0)
+            where h :: (Int, Int) -> Either Square (Square, ((Int, Int), (Int, Int)))
+                  h (grauFinal, grauAtual) | grauAtual == grauFinal = i1 ((sqrt(2)/2) ** fromIntegral(grauAtual))
+                                           | otherwise = i2 (((sqrt(2)/2) ** fromIntegral(grauAtual)),
+                                                             ((grauFinal, grauAtual+1), (grauFinal, grauAtual+1)))
+
+drawPTree = map (Graphics.Gloss.scale 30 30 . toPicture 0.0) . reverse . anaList toPTreeList . depthFTree
+            where toPTreeList :: Int -> Either [a] (PTree, Int)
+                  toPTreeList (-1) = i1 []
+                  toPTreeList n = i2 (generatePTree n, n-1)
+                  toPicture :: Float -> PTree -> Picture
+                  toPicture prof (Unit b) = square b
+                  toPicture prof (Comp a f1 f2) = pictures [square a,
+                                                            translate (-a/2) a $ rotate (-45) $ toPicture (prof+1) f1,
+                                                            translate (a/2) a $ rotate 45 $ toPicture (prof+1) f2]
 \end{code}
 
 \subsection*{Problema 5}
 
 \begin{code}
-singletonbag = undefined
-muB = undefined
-dist = undefined
+singletonbag a = B [(a, 1)]
+
+muB = B . extractBagElems . unB
+            where extractBagElems :: [(Bag a, Int)] -> [(a, Int)]
+                  extractBagElems [] = []
+                  extractBagElems ((B a, n):t) = ((multiplyNumBags a n) ++ (extractBagElems t))
+                  multiplyNumBags :: [(a, Int)] -> Int -> [(a, Int)]
+                  multiplyNumBags [] _ = []
+                  multiplyNumBags ((m, n):t) k = (m, n*k) : (multiplyNumBags t k)
+
+dist = D . converteDist . split id totalMarbles . unB
+            where converteDist :: ([(Marble, Int)], Int) -> [(Marble, ProbRep)]
+                  converteDist ([], _) = []
+                  converteDist (((m, n):t), tot) = (m, fromIntegral(n)/fromIntegral(tot)) : converteDist (t, tot)
+                  totalMarbles :: [(Marble, Int)] -> Int
+                  totalMarbles [] = 0
+                  totalMarbles ((_, n):t) = n + totalMarbles t
 \end{code}
 
 \section{Como exprimir cálculos e diagramas em LaTeX/lhs2tex}
